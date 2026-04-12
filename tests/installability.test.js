@@ -39,3 +39,24 @@ test('hook config registers UserPromptSubmit and Stop handlers', () => {
   );
   assert.equal(stopHook.command, 'node ${CLAUDE_PLUGIN_ROOT}/scripts/stop.js');
 });
+
+test('repo can act as a local marketplace for installing this plugin', () => {
+  const marketplacePath = path.join(rootDir, '.claude-plugin', 'marketplace.json');
+
+  assert.ok(fs.existsSync(marketplacePath), 'expected marketplace manifest to exist');
+
+  const marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf8'));
+  assert.equal(marketplace.name, 'idle-timing-local');
+  assert.equal(marketplace.owner.name, 'xertrov');
+  assert.equal(
+    marketplace.metadata.description,
+    'Local marketplace for the idle timing Claude Code plugin.'
+  );
+  assert.deepEqual(marketplace.plugins, [
+    {
+      name: 'idle-timing',
+      source: './',
+      description: 'Inject hidden timing context into Claude Code prompts.'
+    }
+  ]);
+});

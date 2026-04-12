@@ -1,0 +1,16 @@
+{
+  "name": "idle-timing-local",
+  "owner": {
+    "name": "xertrov"
+  },
+  "metadata": {
+    "description": "Local marketplace for the idle timing Claude Code plugin."
+  },
+  "plugins": [
+    {
+      "name": "idle-timing",
+      "source": "./",
+      "description": "Inject hidden timing context into Claude Code prompts."
+    }
+  ]
+}
