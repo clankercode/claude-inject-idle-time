@@ -98,14 +98,15 @@ test('toLocalIso emits explicit offset and millisecond precision', () => {
   assert.equal(toLocalIso(negativeOffset), '2026-04-13T04:34:56.789-05:00');
 });
 
-test('formatIdleSystemMessage returns a minimal bracketed note after one minute', () => {
+test('formatIdleSystemMessage returns a minimal bracketed note after 10 seconds', () => {
+  assert.equal(formatIdleSystemMessage(11000), '[after 11s]');
   assert.equal(formatIdleSystemMessage(63000), '[after 1m 3s]');
   assert.equal(formatIdleSystemMessage(302000), '[after 5m 2s]');
 });
 
 test('formatIdleSystemMessage omits short or unavailable idle gaps', () => {
-  assert.equal(formatIdleSystemMessage(60000), null);
-  assert.equal(formatIdleSystemMessage(59999), null);
+  assert.equal(formatIdleSystemMessage(10000), null);
+  assert.equal(formatIdleSystemMessage(9999), null);
   assert.equal(formatIdleSystemMessage(null), null);
   assert.equal(formatIdleSystemMessage(Number.NaN), null);
 });

@@ -25,7 +25,7 @@ last_turn=88.2s
 The plugin uses official Claude Code hooks:
 
 - `UserPromptSubmit` injects hidden timing context on every prompt
-- `UserPromptSubmit` also shows a compact TUI note like `[after 5m 2s]` when the user replies after more than one idle minute
+- `UserPromptSubmit` also shows a compact TUI note like `[after 5m 2s]` when the user replies after more than 10 seconds of idle time
 - `Stop` persists per-session timing state for the next turn
 - `PreCompact` resets the idle timer when context compaction runs, so the statusline counts from the compaction event rather than the last pre-compact reply
 

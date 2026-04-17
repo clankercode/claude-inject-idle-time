@@ -1,6 +1,6 @@
 const { stripMs } = require('./time');
 
-const IDLE_SYSTEM_MESSAGE_THRESHOLD_MS = 60 * 1000;
+const IDLE_SYSTEM_MESSAGE_THRESHOLD_MS = 10 * 1000;
 
 function appendDuration(parts, name, valueMs) {
   if (typeof valueMs === 'number' && Number.isFinite(valueMs)) {

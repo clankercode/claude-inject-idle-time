@@ -116,6 +116,7 @@ test('prompt, stop, then prompt includes idle and prior execution timing context
   assert.equal(secondPrompt.code, 0, `expected success, stderr was: ${secondPrompt.stderr}`);
   assert.equal(secondPrompt.stderr, '');
   assert.deepEqual(parseHookOutput(secondPrompt.stdout), {
+    systemMessage: '[after 14s]',
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
       additionalContext: [
@@ -178,6 +179,7 @@ test('prompt, stop, prompt, stop, then prompt reports the second turn execution 
   assert.equal(thirdPrompt.code, 0, `expected success, stderr was: ${thirdPrompt.stderr}`);
   assert.equal(thirdPrompt.stderr, '');
   assert.deepEqual(parseHookOutput(thirdPrompt.stdout), {
+    systemMessage: '[after 32s]',
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
       additionalContext: [

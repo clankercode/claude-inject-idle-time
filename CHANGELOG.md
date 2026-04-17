@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Idle system message now appears after 10 seconds of idle time (was 60 seconds), providing faster visibility into resumed conversations.
+
 ## [0.3.0] - 2026-04-17
 
 ### Changed
