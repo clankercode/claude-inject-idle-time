@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>privacy — idle-timing</title>
+  <meta name="description" content="Privacy policy for the idle-timing Claude Code plugin. No data collected, no network calls, no telemetry." />
+  <meta name="theme-color" content="#1c1c28" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%231c1c28'/%3E%3Ctext x='50%25' y='56%25' font-family='IBM Plex Mono,monospace' font-size='42' font-weight='700' text-anchor='middle' dominant-baseline='middle' fill='%23e4b363'%3E%E2%8F%B1%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="scan"></div>
+
+  <main>
+
+    <section class="hero">
+      <header class="crown">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="crown-title">~/claude-code/plugins/idle-timing/privacy</span>
+        <span class="crown-meta">v0.3.0</span>
+      </header>
+
+      <div style="padding: 48px 44px 44px;">
+        <div class="tag">[ privacy ]</div>
+        <h2 style="font-size: 36px; font-weight: 500; margin: 6px 0 18px; letter-spacing: -0.01em;">privacy policy</h2>
+        <p style="color: var(--text-dim); font-size: 14px; margin: 0 0 28px;">
+          Last updated: 2026-04-17
+        </p>
+
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 18px;">
+          <strong>idle-timing</strong> is a local Claude Code plugin. It does not collect,
+          transmit, store, or share any personal information.
+        </p>
+
+        <ul style="font-size: 14px; line-height: 1.7; color: var(--text-dim); padding-left: 20px; margin: 0 0 28px;">
+          <li>No telemetry.</li>
+          <li>No analytics.</li>
+          <li>No network requests of any kind.</li>
+          <li>No third-party services.</li>
+          <li>No cookies or tracking (the plugin has no web surface).</li>
+        </ul>
+
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 18px;">
+          The plugin computes timestamps and idle durations on your local machine and
+          writes a small per-session state file (containing only numeric timings) under
+          your Claude Code plugin data directory. Nothing leaves your computer.
+        </p>
+
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 28px;">
+          The <code>[timing]</code> block the plugin injects into prompts is delivered to
+          Claude by Claude Code itself, under Anthropic's own privacy policy &mdash; this
+          plugin adds no separate data flow.
+        </p>
+
+        <p style="font-size: 14px; color: var(--text-dim); margin: 0;">
+          Questions? Open an issue at
+          <a href="https://github.com/clankercode/claude-inject-idle-time/issues">github.com/clankercode/claude-inject-idle-time</a>.
+        </p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div class="foot-left">
+        <div class="tag">[ meta ]</div>
+        <div class="foot-line">clankercode / idle-timing &middot; v0.3.0 &middot; Unlicense OR CC0-1.0</div>
+        <div class="foot-sub">no telemetry &middot; no network calls &middot; ~200 lines of node</div>
+      </div>
+      <div class="foot-right">
+        <a href="index.html">&larr; home</a>
+        <a href="https://github.com/clankercode/claude-inject-idle-time">github &rarr;</a>
+      </div>
+    </footer>
+
+  </main>
+</body>
+</html>
