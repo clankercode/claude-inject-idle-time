@@ -15,6 +15,7 @@ The plugin uses official Claude Code hooks:
 - `UserPromptSubmit` injects hidden timing context on every prompt
 - `UserPromptSubmit` also shows a compact TUI note like `[after 5m 2s]` when the user replies after more than one idle minute
 - `Stop` persists per-session timing state for the next turn
+- `PreCompact` resets the idle timer when context compaction runs, so the statusline counts from the compaction event rather than the last pre-compact reply
 
 On a fresh session, unavailable prior-turn fields are omitted.
 
@@ -43,22 +44,21 @@ At a minimum you will need to:
     { "statusLine": { "refreshInterval": 1 } }
     ```
 
-2. In your statusline script, after you read stdin into a variable (e.g. `input=$(cat)`), call the fragment and append its output:
+2. In your statusline script, after you read stdin into a variable (e.g. `input=$(cat)`), pipe the full stdin JSON to the fragment so it can see the current `session_id` and `model.id`:
 
     ```bash
-    session_id=$(echo "$input" | jq -r '.session_id // empty')
-    if [ -n "$session_id" ]; then
-      idle=$(node "/path/to/idle-timing/scripts/statusline-fragment.js" \
-        --session-id "$session_id" 2>/dev/null || true)
-      [ -n "$idle" ] && parts+=("$idle")
-    fi
+    idle=$(echo "$input" | node "/path/to/idle-timing/scripts/statusline-fragment.js" 2>/dev/null || true)
+    [ -n "$idle" ] && parts+=("$idle")
     ```
 
-The fragment prints just the elapsed time (e.g. `45s`, `3m 21s`, `17m`). Add any prefix or emoji in your own script.
+The fragment prints just the elapsed time (e.g. `45s`, `3m 21s`, `17m`, `1h 23m`). Add any prefix or emoji in your own script.
+
+If the current model no longer matches the one that produced the last reply (e.g. you switched with `/model`), the fragment prints `---` instead — the elapsed time is no longer meaningful. The original model's timer resumes if you switch back.
 
 Flags:
 
 - `--session-id <id>` — explicit session id; overrides stdin.
+- `--model-id <id>` — explicit model id; overrides stdin.
 - `--drop-seconds-after <seconds>` — switch to minute-only formatting at this threshold (default `900`, i.e. 15 minutes).
 
 ## Local Usage

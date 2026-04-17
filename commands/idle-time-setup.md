@@ -18,16 +18,12 @@ Steps:
     - Whether `refreshInterval` is already set and its current value
     - The plugin root path: note that `$CLAUDE_PLUGIN_ROOT` is set when the script runs as a hook, but the statusline script runs outside hook context — use the hardcoded installed path instead.
 
-4. Print the paste-ready snippet the user can drop into their statusline script. If the script already assigns stdin to a variable named `input`, use that name; otherwise suggest renaming. Place the snippet just before the final output assembly. Example snippet:
+4. Print the paste-ready snippet the user can drop into their statusline script. If the script already assigns stdin to a variable named `input`, use that name; otherwise suggest renaming. The fragment reads the full statusline JSON from stdin so it can see both `session_id` and `model.id` (used to blank the timer with `---` when the model changes). Place the snippet just before the final output assembly. Example snippet:
 
     ```bash
     # --- idle-timing fragment ---
-    session_id=$(echo "$input" | jq -r '.session_id // empty')
-    if [ -n "$session_id" ]; then
-      idle=$(node "/path/to/idle-timing/scripts/statusline-fragment.js" \
-        --session-id "$session_id" 2>/dev/null || true)
-      [ -n "$idle" ] && parts+=("$idle")
-    fi
+    idle=$(echo "$input" | node "/path/to/idle-timing/scripts/statusline-fragment.js" 2>/dev/null || true)
+    [ -n "$idle" ] && parts+=("$idle")
     # --- /idle-timing fragment ---
     ```
 
@@ -37,12 +33,8 @@ Steps:
 
     ```bash
     # --- idle-timing fragment ---
-    session_id=$(echo "$input" | jq -r '.session_id // empty')
-    if [ -n "$session_id" ]; then
-      idle=$(node "/path/to/idle-timing/scripts/statusline-fragment.js" \
-        --session-id "$session_id" 2>/dev/null || true)
-      [ -n "$idle" ] && result="$result | $idle"
-    fi
+    idle=$(echo "$input" | node "/path/to/idle-timing/scripts/statusline-fragment.js" 2>/dev/null || true)
+    [ -n "$idle" ] && result="$result | $idle"
     # --- /idle-timing fragment ---
     ```
 

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `scripts/statusline-fragment.js` — composable statusline fragment printing elapsed time since the model's last reply (`45s`, `3m 21s`, `17m`, `1h 23m`).
 - `/idle-time-setup` slash command prints a paste-ready snippet and settings change to wire the fragment into an existing statusline.
+- `PreCompact` hook resets the idle timer on context compaction, so the fragment counts from the compaction event rather than the pre-compact final reply.
+- Fragment tracks the active model and prints `---` when the current model differs from the one that produced the last reply (e.g. after `/model`), resuming the elapsed count if the user switches back.
+- Fragment accepts `--model-id <id>` flag and reads `model.id` from stdin statusline JSON.
 
 ## [0.1.3] - 2026-04-17
 
