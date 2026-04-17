@@ -53,3 +53,23 @@ test('repo can act as a local marketplace for installing this plugin', () => {
   assert.equal(entry.name, 'idle-timing');
   assert.equal(entry.source, './');
 });
+
+test('statusline fragment script exists and is directly invocable', () => {
+  const fragmentPath = path.join(rootDir, 'scripts', 'statusline-fragment.js');
+  assert.ok(fs.existsSync(fragmentPath), 'expected statusline fragment script to exist');
+
+  const source = fs.readFileSync(fragmentPath, 'utf8');
+  assert.match(source, /loadSessionState/);
+  assert.match(source, /formatElapsed/);
+});
+
+test('/idle-time-setup slash command is registered', () => {
+  const commandPath = path.join(rootDir, 'commands', 'idle-time-setup.md');
+  assert.ok(fs.existsSync(commandPath), 'expected slash command to exist');
+
+  const contents = fs.readFileSync(commandPath, 'utf8');
+  assert.match(contents, /^---/, 'expected frontmatter');
+  assert.match(contents, /description:/);
+  assert.match(contents, /statusline-fragment\.js/);
+  assert.match(contents, /refreshInterval/);
+});
