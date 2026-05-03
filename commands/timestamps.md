@@ -1,6 +1,6 @@
 ---
 description: Display timestamps for messages in the current conversation
-allowed-tools: Bash(python3:*), Bash(ls:*)
+allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/parse-transcript.py:*), Bash(ls:*)
 argument-hint: [count]
 model: haiku
 ---
@@ -19,7 +19,7 @@ Display a timestamped timeline of messages from the current conversation transcr
 Run this to locate the most recent transcript JSONL file for the current project:
 
 ```bash
-PROJECT_KEY=$(pwd | sed 's|/|-|g; s|^|-|')
+PROJECT_KEY=$(pwd | sed 's|/|-|g')
 ls -t "$HOME/.claude/projects/${PROJECT_KEY}/"*.jsonl 2>/dev/null | head -1
 ```
 
