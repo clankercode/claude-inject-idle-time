@@ -62,6 +62,34 @@ test('repo can act as a local marketplace for installing this plugin', () => {
   assert.equal(entry.source, './');
 });
 
+test('hook config registers PostToolUse handler for session timeline', () => {
+  const hooksPath = path.join(rootDir, 'hooks', 'hooks.json');
+  const postToolScriptPath = path.join(rootDir, 'scripts', 'post-tool-use.js');
+
+  assert.ok(fs.existsSync(postToolScriptPath), 'expected PostToolUse hook script to exist');
+
+  const config = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
+  const postToolHook = config.hooks.PostToolUse[0].hooks[0];
+
+  assert.equal(postToolHook.type, 'command');
+  assert.equal(
+    postToolHook.command,
+    'node ${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-use.js'
+  );
+});
+
+test('MCP server config and time-server script exist', () => {
+  const mcpConfigPath = path.join(rootDir, '.mcp.json');
+  const serverPath = path.join(rootDir, 'servers', 'time-server.js');
+
+  assert.ok(fs.existsSync(mcpConfigPath), 'expected .mcp.json to exist');
+  assert.ok(fs.existsSync(serverPath), 'expected time-server.js to exist');
+
+  const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+  assert.ok(mcpConfig.mcpServers['time-tools'], 'expected time-tools server entry');
+  assert.match(mcpConfig.mcpServers['time-tools'].args[0], /time-server\.js/);
+});
+
 test('statusline fragment script exists and is directly invocable', () => {
   const fragmentPath = path.join(rootDir, 'scripts', 'statusline-fragment.js');
   assert.ok(fs.existsSync(fragmentPath), 'expected statusline fragment script to exist');
@@ -69,6 +97,19 @@ test('statusline fragment script exists and is directly invocable', () => {
   const source = fs.readFileSync(fragmentPath, 'utf8');
   assert.match(source, /loadSessionState/);
   assert.match(source, /formatElapsed/);
+});
+
+test('/timestamps slash command is registered', () => {
+  const commandPath = path.join(rootDir, 'commands', 'timestamps.md');
+  assert.ok(fs.existsSync(commandPath), 'expected slash command to exist');
+
+  const contents = fs.readFileSync(commandPath, 'utf8');
+  assert.match(contents, /^---/, 'expected frontmatter');
+  assert.match(contents, /description:/);
+  assert.match(contents, /parse-transcript\.py/);
+
+  const scriptPath = path.join(rootDir, 'scripts', 'parse-transcript.py');
+  assert.ok(fs.existsSync(scriptPath), 'expected parser script to exist');
 });
 
 test('/idle-time-setup slash command is registered', () => {
