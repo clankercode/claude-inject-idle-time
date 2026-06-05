@@ -12,6 +12,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { getNowIso } = require('../src/time');
+const { isEnabled } = require('../src/config');
+const { sanitizeSessionId } = require('../src/state');
 
 async function readStdin() {
   let input = '';
@@ -23,11 +25,11 @@ async function readStdin() {
   return input;
 }
 
-function sanitizeSessionId(sessionId) {
-  return String(sessionId).replace(/[^A-Za-z0-9._-]/g, '_');
-}
-
 async function main() {
+  if (!isEnabled('timeline')) {
+    return; // disabled → do not log tool calls to disk
+  }
+
   const dataDir = process.env.CLAUDE_PLUGIN_DATA;
 
   if (!dataDir) {

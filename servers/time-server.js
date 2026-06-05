@@ -12,14 +12,91 @@
 
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 const { getNowIso, diffMs, toLocalIso } = require('../src/time');
 const { formatElapsed } = require('../src/duration');
+const { sanitizeSessionId } = require('../src/state');
 
 const SERVER_INFO = { name: 'idle-timing-time-server', version: '0.4.0' };
 const DROP_SECONDS_AFTER = 900;
+// Defensive cap on the disk timeline read: a normal session logs ~60 bytes per
+// tool call, so 10 MB (~170k calls) is far beyond any real session. Guards
+// against reading a pathologically large or non-regular file into memory.
+const MAX_TIMELINE_BYTES = 10 * 1024 * 1024;
 
 // In-memory event log (session-scoped, resets on server restart)
 const eventLog = [];
+
+// --- Disk timeline (PostToolUse log) integration ---
+//
+// PostToolUse writes auto-logged tool calls to
+// `${CLAUDE_PLUGIN_DATA}/timelines/<session>.jsonl`. get_timeline merges that
+// durable history with the in-memory marks below so the auto-logged tool
+// timeline is actually queryable (it used to be a write-only dead-end).
+
+function resolveDataDir(env = process.env) {
+  if (env.CLAUDE_PLUGIN_DATA) {
+    return env.CLAUDE_PLUGIN_DATA;
+  }
+
+  // MCP servers may launch without CLAUDE_PLUGIN_DATA set; fall back to the
+  // documented install path (see repo CLAUDE.md / statusline note).
+  return path.join(os.homedir(), '.claude', 'plugins', 'data', 'idle-timing-idle-info');
+}
+
+// Returns parsed `{timestamp, tool, event}` lines from the on-disk tool
+// timeline. Never throws — a missing dir/file or read error yields []. When no
+// session_id is given, the most-recently-modified timeline file is used as a
+// best-effort guess at the current session.
+function readDiskTimeline(sessionId, env = process.env) {
+  try {
+    const dir = path.join(resolveDataDir(env), 'timelines');
+    let file;
+
+    if (sessionId) {
+      file = path.join(dir, `${sanitizeSessionId(sessionId)}.jsonl`);
+    } else {
+      const candidates = fs
+        .readdirSync(dir)
+        .filter((name) => name.endsWith('.jsonl'));
+
+      if (candidates.length === 0) {
+        return [];
+      }
+
+      file = candidates
+        .map((name) => ({
+          name,
+          mtimeMs: fs.statSync(path.join(dir, name)).mtimeMs
+        }))
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)[0].name;
+      file = path.join(dir, file);
+    }
+
+    const stat = fs.statSync(file);
+
+    if (!stat.isFile() || stat.size > MAX_TIMELINE_BYTES) {
+      return []; // skip non-regular files (fifo/symlink-to-device) and oversized logs
+    }
+
+    return fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 // --- Tool definitions ---
 
@@ -54,8 +131,14 @@ const TOOLS = [
   },
   {
     name: 'get_timeline',
-    description: 'Get all recorded events with durations between them.',
-    inputSchema: { type: 'object', properties: {}, required: [] }
+    description: 'Get the session timeline — marked events plus auto-logged tool calls — in chronological order with durations between them.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'Optional session id; defaults to the most recent session timeline on disk.' }
+      },
+      required: []
+    }
   }
 ];
 
@@ -115,20 +198,42 @@ function handleMarkEvent({ name }) {
   });
 }
 
-function handleGetTimeline() {
-  if (eventLog.length === 0) {
+function handleGetTimeline(args = {}) {
+  // In-memory marks (from mark_event).
+  const marks = eventLog.map((event) => ({
+    kind: 'mark',
+    name: event.name,
+    iso: event.iso,
+    unix_ms: event.unix_ms
+  }));
+
+  // Auto-logged tool calls from the PostToolUse disk timeline.
+  const toolEvents = readDiskTimeline(args.session_id)
+    .map((entry) => ({
+      kind: 'tool',
+      name: entry.tool || 'unknown',
+      iso: entry.timestamp,
+      unix_ms: Date.parse(entry.timestamp)
+    }))
+    .filter((entry) => Number.isFinite(entry.unix_ms));
+
+  const merged = [...marks, ...toolEvents].sort((a, b) => a.unix_ms - b.unix_ms);
+
+  if (merged.length === 0) {
     return JSON.stringify({
       events: [],
-      message: 'No events recorded yet. Use mark_event to start tracking.'
+      message: 'No events recorded yet. Use mark_event, or let the PostToolUse hook auto-log tool calls.'
     });
   }
 
-  const timeline = eventLog.map((event, i) => {
-    const prev = i > 0 ? eventLog[i - 1] : null;
+  const timeline = merged.map((event, i) => {
+    const prev = i > 0 ? merged[i - 1] : null;
     const sincePrevMs = prev ? event.unix_ms - prev.unix_ms : null;
 
     return {
-      ...event,
+      kind: event.kind,
+      name: event.name,
+      iso: event.iso,
       since_prev_ms: sincePrevMs,
       since_prev_human: sincePrevMs !== null
         ? formatElapsed(sincePrevMs, { dropSecondsAfterSeconds: DROP_SECONDS_AFTER })
@@ -136,13 +241,13 @@ function handleGetTimeline() {
     };
   });
 
-  const totalMs = eventLog[eventLog.length - 1].unix_ms - eventLog[0].unix_ms;
+  const totalMs = merged[merged.length - 1].unix_ms - merged[0].unix_ms;
 
   return JSON.stringify({
     events: timeline,
     total_duration_ms: totalMs,
     total_duration_human: formatElapsed(totalMs, { dropSecondsAfterSeconds: DROP_SECONDS_AFTER }) || '0s',
-    event_count: eventLog.length
+    event_count: merged.length
   });
 }
 
@@ -193,11 +298,21 @@ function handleMessage(msg) {
       });
     }
 
-    const text = handler(params.arguments || {});
+    // Never let a handler throw unwind past here — that would leave the client
+    // waiting forever for a response to this request id. Always return an
+    // error envelope instead.
+    try {
+      const text = handler(params.arguments || {});
 
-    return makeResponse(id, {
-      content: [{ type: 'text', text }]
-    });
+      return makeResponse(id, {
+        content: [{ type: 'text', text }]
+      });
+    } catch (err) {
+      return makeResponse(id, {
+        content: [{ type: 'text', text: JSON.stringify({ error: String((err && err.message) || err) }) }],
+        isError: true
+      });
+    }
   }
 
   if (method === 'ping') {
@@ -214,36 +329,51 @@ function handleMessage(msg) {
 
 // --- stdio transport ---
 
-let buffer = '';
+function startStdioServer() {
+  let buffer = '';
 
-process.stdin.setEncoding('utf8');
+  process.stdin.setEncoding('utf8');
 
-process.stdin.on('data', (chunk) => {
-  buffer += chunk;
-  const lines = buffer.split('\n');
+  process.stdin.on('data', (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split('\n');
 
-  buffer = lines.pop();
+    buffer = lines.pop();
 
-  for (const line of lines) {
-    if (!line.trim()) {
-      continue;
-    }
-
-    try {
-      const msg = JSON.parse(line);
-      const response = handleMessage(msg);
-
-      if (response !== null) {
-        process.stdout.write(response + '\n');
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
       }
-    } catch (err) {
-      process.stderr.write(`Parse error: ${err.message}\n`);
+
+      try {
+        const msg = JSON.parse(line);
+        const response = handleMessage(msg);
+
+        if (response !== null) {
+          process.stdout.write(response + '\n');
+        }
+      } catch (err) {
+        process.stderr.write(`Parse error: ${err.message}\n`);
+      }
     }
-  }
-});
+  });
 
-process.stdin.on('end', () => {
-  process.exit(0);
-});
+  process.stdin.on('end', () => {
+    process.exit(0);
+  });
 
-process.stderr.write(`${SERVER_INFO.name} v${SERVER_INFO.version} running on stdio\n`);
+  process.stderr.write(`${SERVER_INFO.name} v${SERVER_INFO.version} running on stdio\n`);
+}
+
+// Only boot the stdio server when run directly; `require()` (tests) gets the
+// pure helpers without attaching stdin listeners or printing the banner.
+if (require.main === module) {
+  startStdioServer();
+}
+
+module.exports = {
+  resolveDataDir,
+  readDiskTimeline,
+  handleGetTimeline,
+  handleMessage
+};
