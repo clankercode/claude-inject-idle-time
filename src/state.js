@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 function sanitizeSessionId(sessionId) {
   return String(sessionId).replace(/[^A-Za-z0-9._-]/g, '_');
@@ -25,7 +26,7 @@ async function loadSessionState({ dataDir, sessionId }) {
 async function saveSessionState({ dataDir, sessionId, state }) {
   const filePath = getSessionFilePath(dataDir, sessionId);
   const nextState = { sessionId, ...state };
-  const tempFilePath = `${filePath}.tmp`;
+  const tempFilePath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
 
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(tempFilePath, JSON.stringify(nextState, null, 2));

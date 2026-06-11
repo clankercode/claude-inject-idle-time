@@ -152,3 +152,29 @@ test('saveSessionState persists a session record that can be loaded again', asyn
   const sessionDirEntries = fs.readdirSync(path.join(dataDir, 'sessions'));
   assert.deepEqual(sessionDirEntries, ['session-1.json']);
 });
+
+test('concurrent saveSessionState calls for the same session do not collide on the temp file', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+
+  const writes = Array.from({ length: 25 }, (_, i) =>
+    saveSessionState({
+      dataDir,
+      sessionId,
+      state: { lastUserPromptAt: `2026-04-12T18:34:${String(i % 60).padStart(2, '0')}.000Z` }
+    })
+  );
+
+  await assert.doesNotReject(Promise.all(writes));
+
+  const reloaded = await loadSessionState({ dataDir, sessionId });
+  assert.equal(reloaded.sessionId, 'session-1');
+  assert.ok(reloaded.lastUserPromptAt, 'expected lastUserPromptAt to be set');
+
+  const sessionDir = path.join(dataDir, 'sessions');
+  const entries = fs.readdirSync(sessionDir);
+  assert.ok(
+    !entries.some((entry) => entry.endsWith('.tmp')),
+    `expected no leftover .tmp files, got: ${entries.join(', ')}`
+  );
+});

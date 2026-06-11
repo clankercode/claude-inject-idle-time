@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Concurrent hook runs (e.g. `UserPromptSubmit` racing a `Stop` or `PreCompact` on the same session) no longer fail with `ENOENT` on the state-file rename. The temp filename in `src/state.js` is now unique per call (random hex suffix) so parallel `writeFile`/`rename` pairs don't clobber each other's temp file.
+
 ## [0.3.1] - 2026-06-11
 
 ### Fixed
