@@ -1,21 +1,21 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-
-function sanitizeSessionId(sessionId) {
-  return String(sessionId).replace(/[^A-Za-z0-9._-]/g, '_');
-}
+const { trySanitizeSessionId } = require('./sanitize');
 
 function getLastResponseFilePath(dataDir, sessionId) {
+  const safeId = trySanitizeSessionId(sessionId);
+  if (!safeId) return null;
   return path.join(
     dataDir,
     'sessions',
-    `${sanitizeSessionId(sessionId)}.lastresponse`
+    `${safeId}.lastresponse`
   );
 }
 
 async function writeLastResponse({ dataDir, sessionId, timestamp }) {
   const filePath = getLastResponseFilePath(dataDir, sessionId);
+  if (!filePath) return;
   const sessionDir = path.dirname(filePath);
   const tempFilePath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
   try {
@@ -33,6 +33,7 @@ async function writeLastResponse({ dataDir, sessionId, timestamp }) {
 
 async function readLastResponse({ dataDir, sessionId }) {
   const filePath = getLastResponseFilePath(dataDir, sessionId);
+  if (!filePath) return null;
   try {
     const raw = await fs.readFile(filePath, 'utf8');
     const trimmed = raw.trim();

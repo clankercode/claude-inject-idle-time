@@ -2,19 +2,11 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-
-const SANITIZE_RE = /[^A-Za-z0-9._-]/g;
-
-function sanitizeSessionId(sessionId) {
-  if (sessionId == null) return null;
-  const stringId = String(sessionId);
-  if (stringId.length === 0) return null;
-  return stringId.replace(SANITIZE_RE, '_');
-}
+const { trySanitizeSessionId } = require('./sanitize');
 
 function getLogPath({ dataDir, sessionId }) {
   if (!dataDir || !sessionId) return null;
-  const safe = sanitizeSessionId(sessionId);
+  const safe = trySanitizeSessionId(sessionId);
   if (!safe) return null;
   return path.join(dataDir, 'logs', `${safe}.log`);
 }
@@ -25,7 +17,7 @@ function ensureLogDirSync(logDir) {
 
 function appendEntry({ dataDir, sessionId, hook, level, message, stack, context }) {
   if (!dataDir || !sessionId) return;
-  const safeId = sanitizeSessionId(sessionId);
+  const safeId = trySanitizeSessionId(sessionId);
   if (!safeId) return;
   const logDir = path.join(dataDir, 'logs');
   ensureLogDirSync(logDir);
@@ -76,4 +68,4 @@ async function readLog({ dataDir, sessionId, limit = 50 }) {
   }
   return out;
 }
-module.exports = { logError, logInfo, getLogPath, readLog, sanitizeSessionId };
+module.exports = { logError, logInfo, getLogPath, readLog };

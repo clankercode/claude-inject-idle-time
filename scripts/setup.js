@@ -8,7 +8,7 @@ const pluginRoot = path.resolve(__dirname, '..');
 const fragmentScriptAbsolutePath = path.join(
   pluginRoot,
   'scripts',
-  'statusline-fragment.js'
+  'statusline-fragment.sh'
 );
 
 const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
@@ -20,7 +20,7 @@ function buildSnippet({ partsArray = true } = {}) {
 
   return [
     '# --- idle-timing fragment ---',
-    `idle=$(echo "$input" | node "${fragmentScriptAbsolutePath}" 2>/dev/null || true)`,
+    `idle=$(echo "$input" | sh "${fragmentScriptAbsolutePath}" 2>/dev/null || true)`,
     append,
     '# --- /idle-timing fragment ---'
   ].join('\n');

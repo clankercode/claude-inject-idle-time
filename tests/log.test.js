@@ -5,7 +5,8 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 
-const { logError, logInfo, getLogPath, readLog, sanitizeSessionId } = require('../src/log');
+const { logError, logInfo, getLogPath, readLog } = require('../src/log');
+const { trySanitizeSessionId: sanitizeSessionId } = require('../src/sanitize');
 
 function tempDataDir(prefix = 'idle-timing-log-') {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

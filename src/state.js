@@ -1,8 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { sanitizeSessionId } = require('./sanitize');
 
-const SESSION_ID_MAX_LENGTH = 256;
 const LOCK_TIMEOUT_MS = 200;
 const STALE_LOCK_MS = 5000;
 const TMP_SWEEP_MAX_AGE_MS = 60 * 60 * 1000;
@@ -17,19 +17,6 @@ const PERSISTED_FIELDS = new Set([
 ]);
 
 const sessionLocks = new Map();
-
-function sanitizeSessionId(sessionId) {
-  if (sessionId == null) {
-    throw new TypeError('sessionId is required');
-  }
-  const stringId = String(sessionId);
-  if (stringId.length === 0 || stringId.length > SESSION_ID_MAX_LENGTH) {
-    throw new RangeError(
-      `sessionId must be between 1 and ${SESSION_ID_MAX_LENGTH} characters`
-    );
-  }
-  return stringId.replace(/[^A-Za-z0-9._-]/g, '_');
-}
 
 function getSessionFilePath(dataDir, sessionId) {
   return path.join(dataDir, 'sessions', `${sanitizeSessionId(sessionId)}.json`);

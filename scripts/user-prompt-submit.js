@@ -3,6 +3,7 @@
 const { formatIdleSystemMessage, formatTimingBlock } = require('../src/format');
 const { loadSessionState, updateSessionState } = require('../src/state');
 const { getNowIso, diffMs } = require('../src/time');
+const { loadConfig } = require('../src/config');
 const { logError } = require('../src/log');
 const { writeLastResponse } = require('../src/last-response');
 
@@ -53,6 +54,7 @@ async function main({ env = process.env, stdin = null } = {}) {
     await writeLastResponse({ dataDir, sessionId, timestamp: lastResponseAt });
   }
 
+  const config = loadConfig({ dataDir });
   const additionalContext = formatTimingBlock({
     userMessageTime,
     isFirstPrompt,
@@ -66,7 +68,7 @@ async function main({ env = process.env, stdin = null } = {}) {
       additionalContext
     }
   };
-  const systemMessage = formatIdleSystemMessage(idleSinceLastStopMs);
+  const systemMessage = formatIdleSystemMessage(idleSinceLastStopMs, config);
 
   if (systemMessage) {
     hookOutput.systemMessage = systemMessage;
