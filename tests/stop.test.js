@@ -3,41 +3,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 
-const rootDir = path.resolve(__dirname, '..');
-const scriptPath = path.join(rootDir, 'scripts', 'stop.js');
+const { main } = require('../scripts/stop');
 
-function runStop({ input, dataDir, nowIso }) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      cwd: rootDir,
-      env: {
-        ...process.env,
-        ...(dataDir ? { CLAUDE_PLUGIN_DATA: dataDir } : {}),
-        CLAUDE_TIMING_NOW_ISO: nowIso
-      },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+async function runStop({ input, dataDir, nowIso }) {
+  const env = { CLAUDE_TIMING_NOW_ISO: nowIso };
+  if (dataDir) env.CLAUDE_PLUGIN_DATA = dataDir;
 
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on('error', reject);
-    child.on('close', (code) => {
-      resolve({ code, stdout, stderr });
-    });
-
-    child.stdin.end(JSON.stringify(input));
-  });
+  try {
+    const result = await main({ env, stdin: JSON.stringify(input) });
+    return { ...result, code: 0 };
+  } catch (error) {
+    return {
+      stdout: '',
+      stderr: `${error && error.stack ? error.stack : error.message}\n`,
+      code: 1
+    };
+  }
 }
 
 test('stop records stop time, assistant time, and previous execution duration when lastUserPromptAt exists', async () => {

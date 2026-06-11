@@ -121,9 +121,8 @@ test('prompt, stop, then prompt includes idle and prior execution timing context
       hookEventName: 'UserPromptSubmit',
       additionalContext: [
         '[timing]',
-        'time=2026-04-13T05:00:19+10:00',
         'idle_for=14.9s',
-        'last_turn=4.3s',
+        'last_turn_dur=4.3s',
         '[/timing]'
       ].join('\n')
     }
@@ -184,9 +183,8 @@ test('prompt, stop, prompt, stop, then prompt reports the second turn execution 
       hookEventName: 'UserPromptSubmit',
       additionalContext: [
         '[timing]',
-        'time=2026-04-13T05:01:00+10:00',
         'idle_for=32.3s',
-        'last_turn=8.4s',
+        'last_turn_dur=8.4s',
         '[/timing]'
       ].join('\n')
     }
@@ -229,9 +227,8 @@ test('prompt after more than one idle minute includes a visible TUI system messa
       hookEventName: 'UserPromptSubmit',
       additionalContext: [
         '[timing]',
-        'time=2026-04-13T05:05:06+10:00',
         'idle_for=302.0s',
-        'last_turn=4.3s',
+        'last_turn_dur=4.3s',
         '[/timing]'
       ].join('\n')
     }

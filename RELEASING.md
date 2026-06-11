@@ -16,7 +16,7 @@ This runs `check:version` (verifies `plugin.json` and `package.json` have the sa
 - [ ] `marketplace.json` plugin entry version matches
 - [ ] `CHANGELOG.md` has an entry for the new version with today's date
 - [ ] `claude plugin validate .` passes
-- [ ] `npm test` passes (28 tests)
+- [ ] `npm test` passes
 - [ ] All changes committed and pushed
 
 ## Bumping the version

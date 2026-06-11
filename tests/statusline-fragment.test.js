@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
+const { main } = require('../scripts/statusline-fragment');
+
 const rootDir = path.resolve(__dirname, '..');
 const fragmentScriptPath = path.join(rootDir, 'scripts', 'statusline-fragment.js');
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -55,6 +57,14 @@ function seedSessionState(dataDir, sessionId, state) {
   fs.writeFileSync(filePath, JSON.stringify({ sessionId, ...state }, null, 2));
 }
 
+async function runFragmentMain({ input = '', args = [], dataDir, nowIso }) {
+  const env = { CLAUDE_TIMING_NOW_ISO: nowIso };
+  if (dataDir !== undefined) {
+    env.CLAUDE_PLUGIN_DATA = dataDir;
+  }
+  return main({ env, stdin: input || null, argv: args });
+}
+
 test('fragment prints elapsed time since lastStopAt from stdin session_id', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
   const sessionId = 'session-1';
@@ -63,15 +73,14 @@ test('fragment prints elapsed time since lastStopAt from stdin session_id', asyn
     lastStopAt: '2026-04-12T19:00:00.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:00:45.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
-  assert.equal(result.stderr, '');
   assert.equal(result.stdout, '45s');
+  assert.equal(result.stderr, '');
 });
 
 test('fragment prints empty when session has no lastStopAt yet', async () => {
@@ -82,39 +91,36 @@ test('fragment prints empty when session has no lastStopAt yet', async () => {
     lastUserPromptAt: '2026-04-12T19:00:00.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '');
 });
 
 test('fragment prints empty when no state file exists for the session', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: 'never-seen' }),
     dataDir,
     nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '');
 });
 
 test('fragment prints empty when stdin is not valid JSON and no --session-id', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: 'not json',
     dataDir,
     nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '');
 });
 
@@ -126,14 +132,13 @@ test('fragment uses --session-id when stdin is empty', async () => {
     lastStopAt: '2026-04-12T19:00:00.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: '',
     args: ['--session-id', sessionId],
     dataDir,
     nowIso: '2026-04-12T19:03:30.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '3m 30s');
 });
 
@@ -147,14 +152,13 @@ test('fragment --session-id overrides stdin session_id', async () => {
     lastStopAt: '2026-04-12T18:00:00.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: 'from-stdin' }),
     args: ['--session-id', 'from-arg'],
     dataDir,
     nowIso: '2026-04-12T19:00:10.000Z'
   });
 
-  assert.equal(result.code, 0);
   assert.equal(result.stdout, '10s');
 });
 
@@ -166,14 +170,14 @@ test('fragment honors --drop-seconds-after flag', async () => {
     lastStopAt: '2026-04-12T19:00:00.000Z'
   });
 
-  const withDefault = await runFragment({
+  const withDefault = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:01:00.000Z'
   });
   assert.equal(withDefault.stdout, '1m 0s');
 
-  const withLowerThreshold = await runFragment({
+  const withLowerThreshold = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     args: ['--drop-seconds-after', '30'],
     dataDir,
@@ -183,14 +187,12 @@ test('fragment honors --drop-seconds-after flag', async () => {
 });
 
 test('fragment prints empty when CLAUDE_PLUGIN_DATA is not set', async () => {
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: 'session-1' }),
     dataDir: undefined,
-    nowIso: '2026-04-12T19:00:05.000Z',
-    extraEnv: { CLAUDE_PLUGIN_DATA: '' }
+    nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0);
   assert.equal(result.stdout, '');
 });
 
@@ -203,7 +205,7 @@ test('fragment captures model on first tick after a stop', async () => {
     lastStopAt: stopAt
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({
       session_id: sessionId,
       model: { id: 'claude-opus-4-7' }
@@ -212,7 +214,6 @@ test('fragment captures model on first tick after a stop', async () => {
     nowIso: '2026-04-12T19:00:10.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '10s');
 
   const saved = JSON.parse(
@@ -233,7 +234,7 @@ test('fragment prints --- when model changed since capture', async () => {
     modelAtLastStopAt: stopAt
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({
       session_id: sessionId,
       model: { id: 'claude-opus-4-7' }
@@ -242,7 +243,6 @@ test('fragment prints --- when model changed since capture', async () => {
     nowIso: '2026-04-12T19:00:30.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '---');
 });
 
@@ -257,7 +257,7 @@ test('fragment shows elapsed time when current model matches captured model', as
     modelAtLastStopAt: stopAt
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({
       session_id: sessionId,
       model: { id: 'claude-sonnet-4-6' }
@@ -266,7 +266,6 @@ test('fragment shows elapsed time when current model matches captured model', as
     nowIso: '2026-04-12T19:00:15.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '15s');
 });
 
@@ -282,7 +281,7 @@ test('fragment re-captures model when a newer lastStopAt is seen', async () => {
     modelAtLastStopAt: olderStopAt
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({
       session_id: sessionId,
       model: { id: 'claude-opus-4-7' }
@@ -291,7 +290,6 @@ test('fragment re-captures model when a newer lastStopAt is seen', async () => {
     nowIso: '2026-04-12T19:00:20.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '20s');
 
   const saved = JSON.parse(
@@ -312,7 +310,7 @@ test('fragment --model-id flag overrides stdin model', async () => {
     modelAtLastStopAt: stopAt
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({
       session_id: sessionId,
       model: { id: 'claude-sonnet-4-6' }
@@ -322,7 +320,6 @@ test('fragment --model-id flag overrides stdin model', async () => {
     nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0);
   assert.equal(result.stdout, '---');
 });
 
@@ -336,13 +333,12 @@ test('fragment ignores model tracking when no model id is available', async () =
     modelAtLastStopAt: '2026-04-12T19:00:00.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0);
   assert.equal(result.stdout, '5s');
 });
 
@@ -362,13 +358,12 @@ test('fragment keeps ticking from lastAssistantMessageAt after lastStopAt is cle
     lastUserPromptAt: '2026-04-12T19:00:30.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:00:45.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '45s');
 });
 
@@ -383,13 +378,12 @@ test('fragment counts from lastAssistantMessageAt when both timestamps are prese
     lastAssistantMessageAt: '2026-04-12T19:00:00.000Z'
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:00:20.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '20s');
 });
 
@@ -403,13 +397,12 @@ test('fragment prints empty when neither lastAssistantMessageAt nor lastStopAt i
     lastAssistantMessageAt: null
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({ session_id: sessionId }),
     dataDir,
     nowIso: '2026-04-12T19:00:05.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '');
 });
 
@@ -425,7 +418,7 @@ test('fragment prints --- on model change even after lastStopAt is cleared', asy
     modelAtLastStopAt: respondedAt
   });
 
-  const result = await runFragment({
+  const result = await runFragmentMain({
     input: JSON.stringify({
       session_id: sessionId,
       model: { id: 'claude-opus-4-7' }
@@ -434,6 +427,27 @@ test('fragment prints --- on model change even after lastStopAt is cleared', asy
     nowIso: '2026-04-12T19:00:30.000Z'
   });
 
-  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.equal(result.stdout, '---');
+});
+
+// --- spawn-based integration test: exercises the require.main === module branch
+//     that the in-process main() tests above do not. ---
+
+test('fragment binary integration: child process invocation matches the in-process call', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-int-'));
+  const sessionId = 'session-1';
+
+  seedSessionState(dataDir, sessionId, {
+    lastStopAt: '2026-04-12T19:00:00.000Z'
+  });
+
+  const result = await runFragment({
+    input: JSON.stringify({ session_id: sessionId }),
+    dataDir,
+    nowIso: '2026-04-12T19:00:45.000Z'
+  });
+
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdout, '45s');
 });

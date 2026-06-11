@@ -45,6 +45,7 @@ test('diffMs returns null for malformed timestamps', () => {
 test('formatTimingBlock includes only available numeric fields', () => {
   const block = formatTimingBlock({
     userMessageTime: '2026-04-13T04:34:56.789+10:00',
+    isFirstPrompt: true,
     idleSinceLastAssistantMs: null,
     idleSinceLastStopMs: 14890,
     lastTurnExecMs: 4321
@@ -54,9 +55,29 @@ test('formatTimingBlock includes only available numeric fields', () => {
     block,
     [
       '[timing]',
-      'time=2026-04-13T04:34:56+10:00',
+      'local_time=2026-04-13T04:34:56+10:00',
       'idle_for=14.9s',
-      'last_turn=4.3s',
+      'last_turn_dur=4.3s',
+      '[/timing]'
+    ].join('\n')
+  );
+});
+
+test('formatTimingBlock omits the local_time line on turn 2+', () => {
+  const block = formatTimingBlock({
+    userMessageTime: '2026-04-13T04:34:56.789+10:00',
+    isFirstPrompt: false,
+    idleSinceLastAssistantMs: null,
+    idleSinceLastStopMs: 14890,
+    lastTurnExecMs: 4321
+  });
+
+  assert.equal(
+    block,
+    [
+      '[timing]',
+      'idle_for=14.9s',
+      'last_turn_dur=4.3s',
       '[/timing]'
     ].join('\n')
   );
@@ -65,6 +86,7 @@ test('formatTimingBlock includes only available numeric fields', () => {
 test('formatTimingBlock omits non-finite numeric fields', () => {
   const block = formatTimingBlock({
     userMessageTime: '2026-04-13T04:34:56.789+10:00',
+    isFirstPrompt: true,
     idleSinceLastAssistantMs: Number.NaN,
     idleSinceLastStopMs: Number.POSITIVE_INFINITY,
     lastTurnExecMs: 4321
@@ -74,8 +96,8 @@ test('formatTimingBlock omits non-finite numeric fields', () => {
     block,
     [
       '[timing]',
-      'time=2026-04-13T04:34:56+10:00',
-      'last_turn=4.3s',
+      'local_time=2026-04-13T04:34:56+10:00',
+      'last_turn_dur=4.3s',
       '[/timing]'
     ].join('\n')
   );

@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
+const { main } = require('../scripts/user-prompt-submit');
+
 const rootDir = path.resolve(__dirname, '..');
 const scriptPath = path.join(rootDir, 'scripts', 'user-prompt-submit.js');
 
@@ -12,36 +14,20 @@ function parseHookOutput(stdout) {
   return JSON.parse(stdout);
 }
 
-function runUserPromptSubmit({ input, dataDir, nowIso }) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      cwd: rootDir,
-      env: {
-        ...process.env,
-        CLAUDE_PLUGIN_DATA: dataDir,
-        CLAUDE_TIMING_NOW_ISO: nowIso
-      },
-      stdio: ['pipe', 'pipe', 'pipe']
+async function runUserPromptSubmit({ input, dataDir, nowIso }) {
+  try {
+    const result = await main({
+      env: { CLAUDE_PLUGIN_DATA: dataDir, CLAUDE_TIMING_NOW_ISO: nowIso },
+      stdin: JSON.stringify(input)
     });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on('error', reject);
-    child.on('close', (code) => {
-      resolve({ code, stdout, stderr });
-    });
-
-    child.stdin.end(JSON.stringify(input));
-  });
+    return { ...result, code: 0 };
+  } catch (error) {
+    return {
+      stdout: '',
+      stderr: `${error && error.stack ? error.stack : error.message}\n`,
+      code: 1
+    };
+  }
 }
 
 test('first prompt injects only the timestamp block and persists lastUserPromptAt', async () => {
@@ -59,7 +45,7 @@ test('first prompt injects only the timestamp block and persists lastUserPromptA
   assert.deepEqual(parseHookOutput(result.stdout), {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: ['[timing]', 'time=2026-04-13T05:00:00+10:00', '[/timing]'].join('\n')
+      additionalContext: ['[timing]', 'local_time=2026-04-13T05:00:00+10:00', '[/timing]'].join('\n')
     }
   });
 
@@ -104,9 +90,8 @@ test('later prompts include idle and previous execution timings from state', asy
       hookEventName: 'UserPromptSubmit',
       additionalContext: [
         '[timing]',
-        'time=2026-04-13T05:00:10+10:00',
         'idle_for=5.5s',
-        'last_turn=4.3s',
+        'last_turn_dur=4.3s',
         '[/timing]'
       ].join('\n')
     }
@@ -155,9 +140,8 @@ test('idle gaps over one minute are shown to the user without adding the note to
       hookEventName: 'UserPromptSubmit',
       additionalContext: [
         '[timing]',
-        'time=2026-04-13T05:05:06+10:00',
         'idle_for=302.0s',
-        'last_turn=4.3s',
+        'last_turn_dur=4.3s',
         '[/timing]'
       ].join('\n')
     }

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-11
+
 ### Fixed
 - Concurrent hook runs (e.g. `UserPromptSubmit` racing a `Stop` or `PreCompact` on the same session) no longer fail with `ENOENT` on the state-file rename. The temp filename in `src/state.js` is now unique per call (random hex suffix) so parallel `writeFile`/`rename` pairs don't clobber each other's temp file.
 - Concurrent hooks can no longer clobber each other's state via the read-modify-write pattern. `src/state.js` now exposes `updateSessionState` and `mutateSessionState` that do the load-merge-save atomically under a per-session in-process mutex and a cross-process file lock (`<session>.json.lock`, atomic `O_EXCL` create, steal-after-5s on stale). The three hook scripts (`UserPromptSubmit`, `Stop`, `PreCompact`) now use these primitives.
@@ -17,7 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `src/state.js` now whitelists the fields it persists (`lastUserPromptAt`, `lastStopAt`, `lastAssistantMessageAt`, `lastTurnExecMs`, `modelAtLastStop`, `modelAtLastStopAt`). Other fields passed to `saveSessionState` / `updateSessionState` are dropped before they hit disk — eliminates the `sessionId` / `session_id` duplication and protects against any future caller accidentally persisting hook-input fields.
 - `src/state.js` now sweeps `sessions/*.tmp` files older than one hour on each save, so a process killed mid-`writeFile` doesn't leave permanent litter in the data dir.
-- State files are now written as compact JSON (no `null, 2` indent) to halve the bytes per write.
+- The statusline fragment now ships in two flavors: `scripts/statusline-fragment.sh` (POSIX-sh, no node cold-start, <10ms/tick) and `scripts/statusline-fragment.js` (reference / fallback with model-change `---` tracking).
+- `/idle-time-status` slash command runs a one-shot self-test (verifies all three hooks, prints the version, the data dir, and the log dir).
+- `/idle-time-reset` slash command clears the current session's state (or all sessions with `--all --yes`).
+- Hook errors are appended to `${CLAUDE_PLUGIN_DATA}/logs/<sessionId>.log` (NDJSON, one line per error) so the user can see them via `tail` or `/idle-time-status`.
+- Configurable thresholds via `${CLAUDE_PLUGIN_DATA}/config.json`: `idleMessageThresholdSeconds` (default 10), `dropSecondsAfterSeconds` (default 900), `idleMessageDropSecondsAfterSeconds` (default 3600), `formatHoursAsDays` (default true).
+- Format polish: the visible `[after X]` system message uses a `d` unit once idle exceeds 24h, and drops the trailing seconds at >= 1h. The hidden `[timing]` block uses clearer field names: `local_time=`, `idle_for=`, `last_turn_dur=`. The redundant `local_time=` line is omitted on turn 2+.
+- `npm run setup` script (`scripts/setup.js`) prints a paste-ready snippet with the actual installed path and patches `~/.claude/settings.json` to add `statusLine.refreshInterval: 1`.
+- `src/log.js` exports `logError` / `logInfo` / `readLog` / `getLogPath` — per-session NDJSON error logger, used by the hook scripts and the reset command.
+
+### Changed
+- The hidden `[timing]` block's field names are renamed: `time=` → `local_time=`, `last_turn=` → `last_turn_dur=`. (`idle_for=` is unchanged.)
+- Statusline source of truth is now a per-session `.lastresponse` file (one line, the ISO timestamp of the last model response) maintained by the hooks. The `.sh` fragment reads this file; the `.js` fragment reads the same file (with a JSON fallback for backward compatibility).
+- State files are written as compact JSON (no indent) to halve the bytes per write.
 
 ## [0.3.1] - 2026-06-11
 
