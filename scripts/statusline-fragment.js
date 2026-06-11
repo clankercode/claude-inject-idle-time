@@ -99,12 +99,20 @@ async function main() {
 
   const session = await loadSessionState({ dataDir, sessionId });
 
-  if (!session || !session.lastStopAt) {
+  // Count from the model's last response. `lastAssistantMessageAt` survives the
+  // UserPromptSubmit boundary (which clears `lastStopAt` so stop.js can measure
+  // the next turn), so the fragment keeps ticking during the following turn
+  // instead of going blank. Fall back to `lastStopAt` for state files written
+  // before `lastAssistantMessageAt` existed.
+  const lastResponseAt =
+    (session && (session.lastAssistantMessageAt || session.lastStopAt)) || null;
+
+  if (!lastResponseAt) {
     return;
   }
 
   const currentModelId = resolveModelId(stdinJson, args.modelId);
-  const stopAt = session.lastStopAt;
+  const stopAt = lastResponseAt;
 
   if (currentModelId) {
     if (session.modelAtLastStopAt !== stopAt) {

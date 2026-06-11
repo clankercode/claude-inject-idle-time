@@ -35,7 +35,7 @@ Edge cases (all print empty string, exit 0):
 
 ### Semantic
 
-`now - last_stop_iso` from the existing per-session state file written by `scripts/stop.js`. Keeps ticking during a subsequent turn (still answers "how long since model last responded" — honest semantic).
+`now - last_response_iso` where `last_response_iso` is `lastAssistantMessageAt` from the per-session state file (written by `scripts/stop.js`, falling back to `lastStopAt` for older state files). `lastAssistantMessageAt` is used rather than `lastStopAt` because `UserPromptSubmit` clears `lastStopAt` at the start of each turn (so `stop.js` can measure turn duration); counting from `lastAssistantMessageAt` keeps the fragment ticking during a subsequent turn (still answers "how long since model last responded" — honest semantic) instead of going blank.
 
 ### CLI
 

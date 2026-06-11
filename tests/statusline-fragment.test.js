@@ -345,3 +345,95 @@ test('fragment ignores model tracking when no model id is available', async () =
   assert.equal(result.code, 0);
   assert.equal(result.stdout, '5s');
 });
+
+// --- keep-ticking fix: count from lastAssistantMessageAt, which survives the
+//     UserPromptSubmit boundary that clears lastStopAt (see design spec). ---
+
+test('fragment keeps ticking from lastAssistantMessageAt after lastStopAt is cleared', async () => {
+  // UserPromptSubmit sets lastStopAt=null at the start of the next turn. The
+  // fragment must keep showing "time since the model last responded" instead of
+  // going blank until the turn's Stop fires.
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
+  const sessionId = 'session-mid-turn';
+
+  seedSessionState(dataDir, sessionId, {
+    lastStopAt: null,
+    lastAssistantMessageAt: '2026-04-12T19:00:00.000Z',
+    lastUserPromptAt: '2026-04-12T19:00:30.000Z'
+  });
+
+  const result = await runFragment({
+    input: JSON.stringify({ session_id: sessionId }),
+    dataDir,
+    nowIso: '2026-04-12T19:00:45.000Z'
+  });
+
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stdout, '45s');
+});
+
+test('fragment counts from lastAssistantMessageAt when both timestamps are present', async () => {
+  // Normal idle: stop.js writes lastStopAt === lastAssistantMessageAt, so the
+  // displayed value is unchanged from the pre-fix behavior.
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
+  const sessionId = 'session-both';
+
+  seedSessionState(dataDir, sessionId, {
+    lastStopAt: '2026-04-12T19:00:00.000Z',
+    lastAssistantMessageAt: '2026-04-12T19:00:00.000Z'
+  });
+
+  const result = await runFragment({
+    input: JSON.stringify({ session_id: sessionId }),
+    dataDir,
+    nowIso: '2026-04-12T19:00:20.000Z'
+  });
+
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stdout, '20s');
+});
+
+test('fragment prints empty when neither lastAssistantMessageAt nor lastStopAt is set', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
+  const sessionId = 'session-fresh';
+
+  seedSessionState(dataDir, sessionId, {
+    lastUserPromptAt: '2026-04-12T19:00:00.000Z',
+    lastStopAt: null,
+    lastAssistantMessageAt: null
+  });
+
+  const result = await runFragment({
+    input: JSON.stringify({ session_id: sessionId }),
+    dataDir,
+    nowIso: '2026-04-12T19:00:05.000Z'
+  });
+
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stdout, '');
+});
+
+test('fragment prints --- on model change even after lastStopAt is cleared', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-fragment-'));
+  const sessionId = 'session-model-changed-mid-turn';
+  const respondedAt = '2026-04-12T19:00:00.000Z';
+
+  seedSessionState(dataDir, sessionId, {
+    lastStopAt: null,
+    lastAssistantMessageAt: respondedAt,
+    modelAtLastStop: 'claude-sonnet-4-6',
+    modelAtLastStopAt: respondedAt
+  });
+
+  const result = await runFragment({
+    input: JSON.stringify({
+      session_id: sessionId,
+      model: { id: 'claude-opus-4-7' }
+    }),
+    dataDir,
+    nowIso: '2026-04-12T19:00:30.000Z'
+  });
+
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stdout, '---');
+});

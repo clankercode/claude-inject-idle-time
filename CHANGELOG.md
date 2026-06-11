@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Statusline fragment now counts from the model's last response
+  (`lastAssistantMessageAt`) rather than `lastStopAt`. `lastStopAt` is cleared by
+  the `UserPromptSubmit` hook at the start of each turn (so `stop.js` can measure
+  the turn), which made the fragment go **blank** for the whole next turn and
+  until that turn's `Stop` fired. It now keeps ticking as "time since the model
+  last responded," restoring the documented semantic. The idle display after a
+  `Stop` is unchanged (the two timestamps are equal there); model-change `---`
+  tracking is preserved. Falls back to `lastStopAt` for pre-existing state files.
+
 ## [0.3.0] - 2026-04-17
 
 ### Changed
