@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const { formatIdleSystemMessage, formatTimingBlock } = require('../src/format');
-const { loadSessionState, saveSessionState } = require('../src/state');
+const { loadSessionState, updateSessionState } = require('../src/state');
 const { getNowIso, diffMs } = require('../src/time');
 
 async function readStdin() {
@@ -30,24 +30,24 @@ async function main() {
   }
 
   const userMessageTime = getNowIso();
-  const session = await loadSessionState({ dataDir, sessionId });
-
-  await saveSessionState({
+  const previous = await loadSessionState({ dataDir, sessionId });
+  const isFirstPrompt = !previous.lastUserPromptAt;
+  const idleSinceLastStopMs = diffMs(userMessageTime, previous.lastStopAt);
+  const nextSession = await updateSessionState({
     dataDir,
     sessionId,
-    state: {
-      ...session,
+    patch: {
       lastUserPromptAt: userMessageTime,
       lastStopAt: null
     }
   });
 
-  const idleSinceLastStopMs = diffMs(userMessageTime, session.lastStopAt);
   const additionalContext = formatTimingBlock({
     userMessageTime,
-    idleSinceLastAssistantMs: diffMs(userMessageTime, session.lastAssistantMessageAt),
+    isFirstPrompt,
+    idleSinceLastAssistantMs: diffMs(userMessageTime, previous.lastAssistantMessageAt),
     idleSinceLastStopMs,
-    lastTurnExecMs: session.lastTurnExecMs
+    lastTurnExecMs: nextSession.lastTurnExecMs
   });
   const hookOutput = {
     hookSpecificOutput: {

@@ -6,7 +6,13 @@ const path = require('node:path');
 
 const { toIsoUtc, toLocalIso, getNowIso, stripMs, diffMs } = require('../src/time');
 const { formatIdleSystemMessage, formatTimingBlock } = require('../src/format');
-const { getSessionFilePath, loadSessionState, saveSessionState } = require('../src/state');
+const {
+  getSessionFilePath,
+  loadSessionState,
+  saveSessionState,
+  updateSessionState,
+  mutateSessionState
+} = require('../src/state');
 
 test('toIsoUtc normalizes a date-like value to UTC ISO 8601', () => {
   assert.equal(toIsoUtc('2026-04-12T18:34:56.789Z'), '2026-04-12T18:34:56.789Z');
@@ -177,4 +183,193 @@ test('concurrent saveSessionState calls for the same session do not collide on t
     !entries.some((entry) => entry.endsWith('.tmp')),
     `expected no leftover .tmp files, got: ${entries.join(', ')}`
   );
+});
+
+test('loadSessionState quarantines a corrupt JSON file and returns a default state', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+  const sessionDir = path.join(dataDir, 'sessions');
+  fs.mkdirSync(sessionDir, { recursive: true });
+  const filePath = path.join(sessionDir, 'session-1.json');
+  fs.writeFileSync(filePath, '{ this is not valid json');
+
+  const captured = [];
+  const originalWrite = process.stderr.write;
+  process.stderr.write = (chunk) => {
+    captured.push(String(chunk));
+    return true;
+  };
+
+  let state;
+  try {
+    state = await loadSessionState({ dataDir, sessionId });
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+
+  assert.deepEqual(state, { sessionId: 'session-1' });
+  assert.ok(
+    captured.some((line) => /quarantined corrupt state file/.test(line)),
+    `expected a quarantine message, got: ${captured.join('')}`
+  );
+
+  const entries = fs.readdirSync(sessionDir);
+  assert.ok(!entries.includes('session-1.json'), 'expected the corrupt file to be moved');
+  assert.ok(
+    entries.some((name) => name.startsWith('session-1.json.corrupt-')),
+    `expected a .corrupt-<ts> file, got: ${entries.join(', ')}`
+  );
+});
+
+test('saveSessionState drops fields that are not in the persisted schema', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+
+  await saveSessionState({
+    dataDir,
+    sessionId,
+    state: {
+      lastUserPromptAt: '2026-04-12T18:34:56.000Z',
+      lastTurnExecMs: 4321,
+      session_id: 'spoofed',
+      arbitrary: 'should be dropped',
+      cwd: '/tmp'
+    }
+  });
+
+  const reloaded = await loadSessionState({ dataDir, sessionId });
+  assert.deepEqual(reloaded, {
+    sessionId: 'session-1',
+    lastUserPromptAt: '2026-04-12T18:34:56.000Z',
+    lastTurnExecMs: 4321
+  });
+});
+
+test('updateSessionState merges a patch into existing state atomically', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+
+  await saveSessionState({
+    dataDir,
+    sessionId,
+    state: {
+      lastUserPromptAt: '2026-04-12T18:00:00.000Z',
+      lastTurnExecMs: 1000
+    }
+  });
+
+  const next = await updateSessionState({
+    dataDir,
+    sessionId,
+    patch: { lastStopAt: '2026-04-12T18:00:05.000Z' }
+  });
+
+  assert.deepEqual(next, {
+    sessionId: 'session-1',
+    lastUserPromptAt: '2026-04-12T18:00:00.000Z',
+    lastTurnExecMs: 1000,
+    lastStopAt: '2026-04-12T18:00:05.000Z'
+  });
+});
+
+test('concurrent updateSessionState calls preserve every patch', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+
+  await Promise.all([
+    updateSessionState({ dataDir, sessionId, patch: { lastUserPromptAt: 'A' } }),
+    updateSessionState({ dataDir, sessionId, patch: { lastStopAt: 'B' } }),
+    updateSessionState({ dataDir, sessionId, patch: { lastTurnExecMs: 4321 } }),
+    updateSessionState({ dataDir, sessionId, patch: { lastAssistantMessageAt: 'C' } }),
+    updateSessionState({ dataDir, sessionId, patch: { modelAtLastStop: 'opus-4-7' } })
+  ]);
+
+  const reloaded = await loadSessionState({ dataDir, sessionId });
+  assert.equal(reloaded.lastUserPromptAt, 'A');
+  assert.equal(reloaded.lastStopAt, 'B');
+  assert.equal(reloaded.lastTurnExecMs, 4321);
+  assert.equal(reloaded.lastAssistantMessageAt, 'C');
+  assert.equal(reloaded.modelAtLastStop, 'opus-4-7');
+});
+
+test('mutateSessionState runs the mutator inside the per-session lock', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+
+  await saveSessionState({
+    dataDir,
+    sessionId,
+    state: { lastUserPromptAt: '2026-04-12T18:00:00.000Z' }
+  });
+
+  let observed;
+  const result = await mutateSessionState({
+    dataDir,
+    sessionId,
+    mutator: (existing) => {
+      observed = existing;
+      return { lastTurnExecMs: 5000 };
+    }
+  });
+
+  assert.equal(observed.lastUserPromptAt, '2026-04-12T18:00:00.000Z');
+  assert.equal(result.lastTurnExecMs, 5000);
+
+  const reloaded = await loadSessionState({ dataDir, sessionId });
+  assert.equal(reloaded.lastUserPromptAt, '2026-04-12T18:00:00.000Z');
+  assert.equal(reloaded.lastTurnExecMs, 5000);
+});
+
+test('getSessionFilePath rejects empty, null, and overlong session ids', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+
+  assert.throws(() => getSessionFilePath(dataDir, ''), /between 1 and/);
+  assert.throws(() => getSessionFilePath(dataDir, null), /required/);
+  assert.throws(() => getSessionFilePath(dataDir, undefined), /required/);
+  assert.throws(
+    () => getSessionFilePath(dataDir, 'x'.repeat(257)),
+    /between 1 and 256/
+  );
+});
+
+test('saveSessionState sweeps stale .tmp files older than an hour', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionDir = path.join(dataDir, 'sessions');
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  const staleTmp = path.join(sessionDir, 'session-1.json.deadbeef.tmp');
+  const freshTmp = path.join(sessionDir, 'session-1.json.fresh1234.tmp');
+  fs.writeFileSync(staleTmp, '{}');
+  fs.writeFileSync(freshTmp, '{}');
+
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  fs.utimesSync(staleTmp, twoHoursAgo, twoHoursAgo);
+
+  await saveSessionState({
+    dataDir,
+    sessionId: 'session-1',
+    state: { lastUserPromptAt: '2026-04-12T18:00:00.000Z' }
+  });
+
+  const entries = fs.readdirSync(sessionDir);
+  assert.ok(!entries.includes(path.basename(staleTmp)), 'stale .tmp should be swept');
+  assert.ok(
+    entries.includes(path.basename(freshTmp)),
+    `fresh .tmp should be left alone, got: ${entries.join(', ')}`
+  );
+});
+
+test('saveSessionState uses compact JSON, not pretty-printed', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'idle-timing-core-'));
+  const sessionId = 'session-1';
+
+  await saveSessionState({
+    dataDir,
+    sessionId,
+    state: { lastUserPromptAt: '2026-04-12T18:00:00.000Z' }
+  });
+
+  const filePath = getSessionFilePath(dataDir, sessionId);
+  const raw = fs.readFileSync(filePath, 'utf8');
+  assert.ok(!raw.includes('\n  '), `expected single-line JSON, got: ${raw}`);
 });

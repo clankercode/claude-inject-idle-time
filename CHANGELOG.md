@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Concurrent hook runs (e.g. `UserPromptSubmit` racing a `Stop` or `PreCompact` on the same session) no longer fail with `ENOENT` on the state-file rename. The temp filename in `src/state.js` is now unique per call (random hex suffix) so parallel `writeFile`/`rename` pairs don't clobber each other's temp file.
+- Concurrent hooks can no longer clobber each other's state via the read-modify-write pattern. `src/state.js` now exposes `updateSessionState` and `mutateSessionState` that do the load-merge-save atomically under a per-session in-process mutex and a cross-process file lock (`<session>.json.lock`, atomic `O_EXCL` create, steal-after-5s on stale). The three hook scripts (`UserPromptSubmit`, `Stop`, `PreCompact`) now use these primitives.
+- A truncated or invalid `sessions/<id>.json` no longer breaks every future prompt for that session. `loadSessionState` now quarantines the bad file as `<id>.json.corrupt-<ts>` and returns a default state, with a stderr notice pointing at the quarantine path.
+- `Stop` no longer re-stamps `lastStopAt` / `lastAssistantMessageAt` on a repeat `Stop` of the same turn (it preserves the existing `lastTurnExecMs` instead of recomputing it from a later timestamp).
+- A malicious or accidentally-large `session_id` (e.g. an unbounded string, empty string, or `null`) can no longer write to a weirdly-named file under the data dir. `sanitizeSessionId` now throws on empty/`null` input and caps length at 256 chars.
+
+### Added
+- `src/state.js` now whitelists the fields it persists (`lastUserPromptAt`, `lastStopAt`, `lastAssistantMessageAt`, `lastTurnExecMs`, `modelAtLastStop`, `modelAtLastStopAt`). Other fields passed to `saveSessionState` / `updateSessionState` are dropped before they hit disk — eliminates the `sessionId` / `session_id` duplication and protects against any future caller accidentally persisting hook-input fields.
+- `src/state.js` now sweeps `sessions/*.tmp` files older than one hour on each save, so a process killed mid-`writeFile` doesn't leave permanent litter in the data dir.
+- State files are now written as compact JSON (no `null, 2` indent) to halve the bytes per write.
 
 ## [0.3.1] - 2026-06-11
 

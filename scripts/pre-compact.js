@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { loadSessionState, saveSessionState } = require('../src/state');
+const { updateSessionState } = require('../src/state');
 const { getNowIso } = require('../src/time');
 
 async function readStdin() {
@@ -29,13 +29,11 @@ async function main() {
   }
 
   const now = getNowIso();
-  const session = await loadSessionState({ dataDir, sessionId });
 
-  await saveSessionState({
+  await updateSessionState({
     dataDir,
     sessionId,
-    state: {
-      ...session,
+    patch: {
       lastStopAt: now,
       lastAssistantMessageAt: now,
       modelAtLastStop: null,

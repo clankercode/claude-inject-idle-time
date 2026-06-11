@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { loadSessionState, saveSessionState } = require('../src/state');
+const { mutateSessionState } = require('../src/state');
 const { getNowIso, diffMs } = require('../src/time');
 
 async function readStdin() {
@@ -29,23 +29,27 @@ async function main() {
   }
 
   const lastStopAt = getNowIso();
-  const session = await loadSessionState({ dataDir, sessionId });
-  const lastTurnExecMs = session.lastStopAt ? null : diffMs(lastStopAt, session.lastUserPromptAt);
 
-  const nextState = {
-    ...session,
-    lastStopAt,
-    lastAssistantMessageAt: lastStopAt
-  };
-
-  if (typeof lastTurnExecMs === 'number') {
-    nextState.lastTurnExecMs = lastTurnExecMs;
-  }
-
-  await saveSessionState({
+  await mutateSessionState({
     dataDir,
     sessionId,
-    state: nextState
+    mutator: (existing) => {
+      const isFirstStopInTurn = !existing.lastStopAt;
+      const candidate =
+        isFirstStopInTurn && existing.lastUserPromptAt
+          ? diffMs(lastStopAt, existing.lastUserPromptAt)
+          : null;
+      const lastTurnExecMs =
+        typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0
+          ? candidate
+          : existing.lastTurnExecMs;
+
+      return {
+        lastStopAt,
+        lastAssistantMessageAt: lastStopAt,
+        lastTurnExecMs
+      };
+    }
   });
 }
 
